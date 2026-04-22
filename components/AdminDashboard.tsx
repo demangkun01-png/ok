@@ -1523,159 +1523,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       const printWindow = window.open('', '_blank');
       if (!printWindow) return;
 
-      const CHUNK_SIZE = 18;
       const totalUsers = filteredUsers.length;
-      let chunks = [];
-      for (let i = 0; i < totalUsers; i += CHUNK_SIZE) {
-          chunks.push(filteredUsers.slice(i, i + CHUNK_SIZE));
-      }
+      const CHUNK_SIZE = Math.max(18, totalUsers); // Always 1 chunk
+      const scaleFactor = CHUNK_SIZE > 18 ? 18 / CHUNK_SIZE : 1;
       
-      // If no users, we might still want to print a blank form
-      if (chunks.length === 0) chunks.push([]);
-
       const logoHtml = settings.schoolLogoUrl 
           ? `<img src="${settings.schoolLogoUrl}" class="kop-logo" />` 
           : `<div style="width:50px"></div>`;
 
-      const pagesHtml = chunks.map(chunk => {
-          // Fill up to CHUNK_SIZE with empty or filled rows
-          const rows = [];
-          for (let j = 0; j < CHUNK_SIZE; j++) {
-              const u = chunk[j];
-              if (u) {
-                  rows.push(`
-                      <tr>
-                          <td style="text-align: center">${j+1}</td>
-                          <td style="text-align: center">${u.nomorPeserta || ''}</td>
-                          <td style="padding-left: 5px;">${u.name}</td>
-                          <td style="text-align: center">${u.class || ''}</td>
-                          <td style="width: 15%">${j%2 === 0 ? (j+1)+'.' : ''}</td>
-                          <td style="width: 15%">${j%2 !== 0 ? (j+1)+'.' : ''}</td>
-                      </tr>
-                  `);
-              } else {
-                  rows.push(`
-                      <tr>
-                          <td style="text-align: center; height: 18px;">${j+1}</td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
-                          <td>${j%2 === 0 ? (j+1)+'.' : ''}</td>
-                          <td>${j%2 !== 0 ? (j+1)+'.' : ''}</td>
-                      </tr>
-                  `);
-              }
+      // Fill up to CHUNK_SIZE with empty or filled rows
+      const rows = [];
+      for (let j = 0; j < CHUNK_SIZE; j++) {
+          const u = filteredUsers[j];
+          if (u) {
+              rows.push(`
+                  <tr>
+                      <td style="text-align: center">${j+1}</td>
+                      <td style="text-align: center">${u.nomorPeserta || ''}</td>
+                      <td style="padding-left: 5px;">${u.name}</td>
+                      <td style="text-align: center">${u.class || ''}</td>
+                      <td style="width: 15%">${j%2 === 0 ? (j+1)+'.' : ''}</td>
+                      <td style="width: 15%">${j%2 !== 0 ? (j+1)+'.' : ''}</td>
+                  </tr>
+              `);
+          } else {
+              rows.push(`
+                  <tr>
+                      <td style="text-align: center; height: ${18 * scaleFactor}px;">${j+1}</td>
+                      <td></td>
+                      <td></td>
+                      <td></td>
+                      <td>${j%2 === 0 ? (j+1)+'.' : ''}</td>
+                      <td>${j%2 !== 0 ? (j+1)+'.' : ''}</td>
+                  </tr>
+              `);
           }
+      }
 
-          const kopHtml = `
-              <div class="kop">
-                  ${logoHtml}
-                  <div class="kop-text">
-                      <div class="kop-instansi">${dhConfig.kopInstansi || ''}</div>
-                      <div class="kop-sekolah">${dhConfig.kopSekolah || settings.appName}</div>
-                      <div class="kop-alamat">${dhConfig.kopAlamat || ''}</div>
-                  </div>
-                  <div style="width:50px"></div> <!-- Balance for logo -->
+      const kopHtml = `
+          <div class="kop">
+              ${logoHtml}
+              <div class="kop-text">
+                  <div class="kop-instansi">${dhConfig.kopInstansi || ''}</div>
+                  <div class="kop-sekolah">${dhConfig.kopSekolah || settings.appName}</div>
+                  <div class="kop-alamat">${dhConfig.kopAlamat || ''}</div>
               </div>
-          `;
+              <div style="width:50px"></div> <!-- Balance for logo -->
+          </div>
+      `;
 
-          return `
-          <div class="page">
-              <!-- BERITA ACARA PANE -->
-              <div class="pane pane-left">
-                  ${kopHtml}
-                  <div class="ba-title">BERITA ACARA</div>
-                  <div class="ba-subtitle">PELAKSANAAN ${dhConfig.namaUjian || ''} KELAS ${dhConfig.kelas || ''}</div>
-                  <div class="ba-tahun">Tahun Ajaran ${dhConfig.tahunAjaran || '[ ]'}</div>
+      const pagesHtml = `
+      <div class="page">
+          <!-- BERITA ACARA PANE -->
+          <div class="pane pane-left">
+              ${kopHtml}
+              <div class="ba-title">BERITA ACARA</div>
+              <div class="ba-subtitle">PELAKSANAAN ${dhConfig.namaUjian || ''} KELAS ${dhConfig.kelas || ''}</div>
+              <div class="ba-tahun">Tahun Ajaran ${dhConfig.tahunAjaran || '[ ]'}</div>
+              
+              <div class="ba-content">
+                  <div>Pada hari ini <span class="dot-line" style="min-width: 80px; text-align: center;">${dhConfig.hari || '...........'}</span> 
+                  tanggal <span class="dot-line" style="min-width: 50px; text-align: center;">${dhConfig.tanggal || '.......'}</span> 
+                  bulan <span class="dot-line" style="min-width: 80px; text-align: center;">${dhConfig.bulan || '...........'}</span> 
+                  tahun <span class="dot-line" style="min-width: 50px; text-align: center;">${dhConfig.tahun || '.......'}</span> .</div>
                   
-                  <div class="ba-content">
-                      <div>Pada hari ini <span class="dot-line" style="min-width: 80px; text-align: center;">${dhConfig.hari || '...........'}</span> 
-                      tanggal <span class="dot-line" style="min-width: 50px; text-align: center;">${dhConfig.tanggal || '.......'}</span> 
-                      bulan <span class="dot-line" style="min-width: 80px; text-align: center;">${dhConfig.bulan || '...........'}</span> 
-                      tahun <span class="dot-line" style="min-width: 50px; text-align: center;">${dhConfig.tahun || '.......'}</span> .</div>
-                      
-                      <div style="margin-top: 10px;">a. Telah diselenggarakan <span style="font-weight: bold">${dhConfig.namaUjian || '[ ]'}</span> , tahun ajaran ${dhConfig.tahunAjaran || '[ ]'} .</div>
-                      
-                      <table class="ba-table">
-                          <tr><td style="width: 30%">Mata Pelajaran</td><td style="width: 2%">:</td><td>${dhConfig.mataPelajaran || '...................................................'}</td></tr>
-                          <tr><td>Dari pukul</td><td>:</td><td>${dhConfig.waktuMulai || '..............'} s.d ${dhConfig.waktuSelesai || '..............'} WIB</td></tr>
-                          <tr><td>Pada sekolah</td><td>:</td><td>${dhConfig.kopSekolah || settings.appName}</td></tr>
-                          <tr><td>Ruang</td><td>:</td><td>${dhRoomFilter === 'ALL' ? '.........................' : dhRoomFilter}</td></tr>
-                          <tr><td>Alamat Sekolah</td><td>:</td><td>${dhConfig.kopAlamat || '...................................................'}</td></tr>
-                          <tr><td>Jumlah peserta seharusnya</td><td>:</td><td>${totalUsers > 0 ? totalUsers : '.....'} murid</td></tr>
-                          <tr><td>Jumlah peserta yang hadir</td><td>:</td><td><span class="dot-line" style="width: 50px;"></span> murid</td></tr>
-                          <tr><td>Jumlah peserta tidak hadir</td><td>:</td><td><span class="dot-line" style="width: 50px;"></span> murid</td></tr>
-                          <tr><td></td><td></td><td>yakni nomor peserta <span class="dot-line" style="width: 150px;"></span></td></tr>
-                      </table>
-                      
-                      <div style="margin-top: 5px;">b. Telah dilaksanakan ujian mapel <span style="font-weight: bold">${dhConfig.mataPelajaran || '[ ]'}</span> 
-                      di Ruang <span style="font-weight: bold">${dhRoomFilter === 'ALL' ? '[ ]' : dhRoomFilter}</span> dengan di ikuti oleh <span class="dot-line" style="width: 30px;"></span> siswa, 
-                      dilaksanakan dengan moda CBT dengan daftar hadir dan berita acara sebanyak <span class="dot-line" style="width: 30px;"></span> 1 lembar.</div>
-                      
-                      <div style="margin-top: 5px;">c. Catatan selama pelaksanaan: <span class="dot-line" style="width: 100%;"></span></div>
-                      <div class="dot-line" style="width: 100%; margin-top: 15px;"></div>
-                      <div class="dot-line" style="width: 100%; margin-top: 15px;"></div>
-                      
-                      <div style="margin-top: 10px;">Berita acara ini dibuat dengan sesungguhnya.</div>
+                  <div style="margin-top: 10px;">a. Telah diselenggarakan <span style="font-weight: bold">${dhConfig.namaUjian || '[ ]'}</span> , tahun ajaran ${dhConfig.tahunAjaran || '[ ]'} .</div>
+                  
+                  <table class="ba-table">
+                      <tr><td style="width: 48%; white-space: nowrap;">Mata Pelajaran</td><td style="width: 2%">:</td><td>${dhConfig.mataPelajaran || '...................................................'}</td></tr>
+                      <tr><td style="white-space: nowrap;">Dari pukul</td><td>:</td><td>${dhConfig.waktuMulai || '..............'} s.d ${dhConfig.waktuSelesai || '..............'} WIB</td></tr>
+                      <tr><td style="white-space: nowrap;">Pada sekolah</td><td>:</td><td>${dhConfig.kopSekolah || settings.appName}</td></tr>
+                      <tr><td style="white-space: nowrap;">Ruang</td><td>:</td><td>${dhRoomFilter === 'ALL' ? '.........................' : dhRoomFilter}</td></tr>
+                      <tr><td style="white-space: nowrap;">Alamat Sekolah</td><td>:</td><td>${dhConfig.kopAlamat || '...................................................'}</td></tr>
+                      <tr><td style="white-space: nowrap;">Jumlah peserta seharusnya</td><td>:</td><td>${totalUsers > 0 ? totalUsers : '.....'} murid</td></tr>
+                      <tr><td style="white-space: nowrap;">Jumlah peserta yang hadir</td><td>:</td><td><span class="dot-line" style="width: 50px;"></span> murid</td></tr>
+                      <tr><td style="white-space: nowrap;">Jumlah peserta tidak hadir</td><td>:</td><td><span class="dot-line" style="width: 50px;"></span> murid</td></tr>
+                      <tr><td></td><td></td><td>yakni nomor peserta <span class="dot-line" style="width: 150px;"></span></td></tr>
+                  </table>
+                  
+                  <div style="margin-top: 5px;">b. Telah dilaksanakan ujian mapel <span style="font-weight: bold">${dhConfig.mataPelajaran || '[ ]'}</span> 
+                  di Ruang <span style="font-weight: bold">${dhRoomFilter === 'ALL' ? '[ ]' : dhRoomFilter}</span> dengan di ikuti oleh <span class="dot-line" style="width: 30px;"></span> siswa, 
+                  dilaksanakan dengan moda CBT dengan daftar hadir dan berita acara sebanyak <span class="dot-line" style="width: 30px;"></span> 1 lembar.</div>
+                  
+                  <div style="margin-top: 5px;">c. Catatan selama pelaksanaan: <span class="dot-line" style="width: 100%;"></span></div>
+                  <div class="dot-line" style="width: 100%; margin-top: 15px;"></div>
+                  <div class="dot-line" style="width: 100%; margin-top: 15px;"></div>
+                  
+                  <div style="margin-top: 10px;">Berita acara ini dibuat dengan sesungguhnya.</div>
+              </div>
+              
+              <div class="signature">
+                  <div>Yang membuat berita acara,</div>
+                  <div>${dhConfig.tempatPembuatan || '_________________'},</div>
+                  <div class="signature-name">${dhConfig.pengawas || '[ ]'}</div>
+                  <div style="text-align: left; margin-left: 25px;">NIP/NIPPPK : ${dhConfig.nipPengawas || '_________________'}</div>
+              </div>
+          </div>
+          
+          <!-- DAFTAR HADIR PANE -->
+          <div class="pane">
+              ${kopHtml}
+              
+              <div class="dh-top-area">
+                  <div>
+                      <div style="font-weight: bold; margin-bottom: 2px;">RUANG</div>
+                      <div class="ruang-box">${dhRoomFilter === 'ALL' ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' : dhRoomFilter}</div>
                   </div>
-                  
-                  <div class="signature">
-                      <div>Yang membuat berita acara,</div>
-                      <div>${dhConfig.tempatPembuatan || '_________________'},</div>
-                      <div class="signature-name">${dhConfig.pengawas || '[ ]'}</div>
-                      <div style="text-align: left; margin-left: 25px;">NIP/NIPPPK : ${dhConfig.nipPengawas || '_________________'}</div>
+                  <div class="dh-title-area">
+                      <div class="dh-title">DAFTAR HADIR</div>
+                      <div class="dh-subtitle">${dhConfig.namaUjian || '[ ]'}</div>
+                      <div class="dh-tahun">Tahun Ajaran ${dhConfig.tahunAjaran || '[ ]'}</div>
                   </div>
               </div>
               
-              <!-- DAFTAR HADIR PANE -->
-              <div class="pane">
-                  ${kopHtml}
-                  
-                  <div class="dh-top-area">
-                      <div>
-                          <div style="font-weight: bold; margin-bottom: 2px;">RUANG</div>
-                          <div class="ruang-box">${dhRoomFilter === 'ALL' ? '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' : dhRoomFilter}</div>
-                      </div>
-                      <div class="dh-title-area">
-                          <div class="dh-title">DAFTAR HADIR</div>
-                          <div class="dh-subtitle">${dhConfig.namaUjian || '[ ]'}</div>
-                          <div class="dh-tahun">Tahun Ajaran ${dhConfig.tahunAjaran || '[ ]'}</div>
-                      </div>
-                  </div>
-                  
-                  <table class="meta-table">
+              <table class="meta-table">
+                  <tr>
+                      <td style="width: 25%; white-space: nowrap;">Mata Pelajaran</td><td style="width: 2%">:</td><td style="width: 38%">${dhConfig.mataPelajaran || '[ ]'}</td>
+                      <td style="width: 15%; white-space: nowrap;">Jenjang Kelas</td><td style="width: 2%">:</td><td style="white-space: nowrap;">${dhConfig.kelas || '[ ]'}</td>
+                  </tr>
+                  <tr>
+                      <td style="white-space: nowrap;">Hari, Tanggal</td><td>:</td><td style="white-space: nowrap;">${dhConfig.hari || ''}${dhConfig.hari ? ', ' : ''}${dhConfig.tanggal || ''} ${dhConfig.bulan || ''} ${dhConfig.tahun || '[ ]'}</td>
+                      <td style="white-space: nowrap;">Waktu</td><td>:</td><td style="white-space: nowrap;">${dhConfig.waktuMulai || '[ ]'} - ${dhConfig.waktuSelesai || '[ ]'}</td>
+                  </tr>
+              </table>
+              
+              <table class="data-table">
+                  <thead>
                       <tr>
-                          <td style="width: 25%">Mata Pelajaran</td><td style="width: 2%">:</td><td style="width: 38%">${dhConfig.mataPelajaran || '[ ]'}</td>
-                          <td style="width: 15%">Jenjang Kelas</td><td style="width: 2%">:</td><td>${dhConfig.kelas || '[ ]'}</td>
+                          <th rowspan="2" style="width: 8%">Nomor<br>Bangku</th>
+                          <th rowspan="2" style="width: 20%">Nomor<br>Peserta</th>
+                          <th rowspan="2">Nama Peserta</th>
+                          <th rowspan="2" style="width: 10%">Kelas</th>
+                          <th colspan="2" style="width: 30%">Tanda Tangan</th>
                       </tr>
-                      <tr>
-                          <td>Hari, Tanggal</td><td>:</td><td>${dhConfig.hari || ''}${dhConfig.hari ? ', ' : ''}${dhConfig.tanggal || ''} ${dhConfig.bulan || ''} ${dhConfig.tahun || '[ ]'}</td>
-                          <td>Waktu</td><td>:</td><td>${dhConfig.waktuMulai || '[ ]'} - ${dhConfig.waktuSelesai || '[ ]'}</td>
-                      </tr>
-                  </table>
-                  
-                  <table class="data-table">
-                      <thead>
-                          <tr>
-                              <th rowspan="2" style="width: 8%">Nomor<br>Bangku</th>
-                              <th rowspan="2" style="width: 20%">Nomor<br>Peserta</th>
-                              <th rowspan="2">Nama Peserta</th>
-                              <th rowspan="2" style="width: 10%">Kelas</th>
-                              <th colspan="2" style="width: 30%">Tanda Tangan</th>
-                          </tr>
-                          <tr></tr>
-                      </thead>
-                      <tbody>
-                          ${rows.join('')}
-                      </tbody>
-                  </table>
-                  <div style="font-size: 8pt; margin-top: 5px; font-style: italic;">
-                      *) Petugas piket kebersihan ruang adalah yang tercetak tebal
-                  </div>
-              </div>
+                      <tr></tr>
+                  </thead>
+                  <tbody>
+                      ${rows.join('')}
+                  </tbody>
+              </table>
           </div>
-          `;
-      }).join('');
+      </div>
+      `;
 
       const content = `
       <!DOCTYPE html>
@@ -1684,7 +1673,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
           <title>Cetak Daftar Hadir & Berita Acara</title>
           <style>
               @import url('https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap');
-              body { font-family: 'Times New Roman', Times, serif; font-size: 10pt; margin: 0; padding: 0; box-sizing: border-box; }
+              body { font-family: 'Times New Roman', Times, serif; font-size: ${10 * scaleFactor}pt; margin: 0; padding: 0; box-sizing: border-box; }
               @media print {
                   @page { size: A4 landscape; margin: 10mm; }
                   body { padding: 0; background: white; -webkit-print-color-adjust: exact; }
@@ -1708,39 +1697,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
                   position: relative;
               }
               /* HEADER KOP */
-              .kop { display: flex; align-items: center; border-bottom: 3px solid black; padding-bottom: 5px; margin-bottom: 10px; }
-              .kop-logo { width: 55px; height: auto; object-fit: contain; }
+              .kop { display: flex; align-items: center; border-bottom: ${3 * scaleFactor}px solid black; padding-bottom: ${5 * scaleFactor}px; margin-bottom: ${10 * scaleFactor}px; }
+              .kop-logo { width: ${55 * scaleFactor}px; height: auto; object-fit: contain; }
               .kop-text { flex: 1; text-align: center; line-height: 1.2; }
-              .kop-instansi { font-size: 11pt; font-weight: bold; text-transform: uppercase; }
-              .kop-sekolah { font-size: 12pt; font-weight: bold; text-transform: uppercase; }
-              .kop-alamat { font-size: 8pt; }
+              .kop-instansi { font-size: ${11 * scaleFactor}pt; font-weight: bold; text-transform: uppercase; }
+              .kop-sekolah { font-size: ${12 * scaleFactor}pt; font-weight: bold; text-transform: uppercase; }
+              .kop-alamat { font-size: ${8 * scaleFactor}pt; }
               
               /* BERITA ACARA */
-              .ba-title { text-align: center; font-weight: bold; font-size: 12pt; text-decoration: underline; margin-bottom: 2px; }
-              .ba-subtitle { text-align: center; font-size: 10pt; margin-bottom: 5px; font-weight: bold; text-transform: uppercase; }
-              .ba-tahun { text-align: center; font-size: 10pt; margin-bottom: 15px; }
-              .ba-content { font-size: 10pt; line-height: 1.4; }
+              .ba-title { text-align: center; font-weight: bold; font-size: ${12 * scaleFactor}pt; text-decoration: underline; margin-bottom: ${2 * scaleFactor}px; }
+              .ba-subtitle { text-align: center; font-size: ${10 * scaleFactor}pt; margin-bottom: ${5 * scaleFactor}px; font-weight: bold; text-transform: uppercase; }
+              .ba-tahun { text-align: center; font-size: ${10 * scaleFactor}pt; margin-bottom: ${15 * scaleFactor}px; }
+              .ba-content { font-size: ${10 * scaleFactor}pt; line-height: 1.4; }
               .dot-line { border-bottom: 1px dotted black; display: inline-block; min-width: 50px; }
-              .ba-table { width: 100%; border-collapse: collapse; margin: 5px 0; }
-              .ba-table td { padding: 2px 0; vertical-align: top; }
+              .ba-table { width: 100%; border-collapse: collapse; margin: ${5 * scaleFactor}px 0; }
+              .ba-table td { padding: ${2 * scaleFactor}px 0; vertical-align: top; }
               
               /* DAFTAR HADIR */
-              .dh-top-area { display: flex; justify-content: space-between; margin-bottom: 10px; }
-              .ruang-box { border: 2px solid black; padding: 5px 25px; font-weight: bold; text-align: center; width: max-content; height: max-content; }
+              .dh-top-area { display: flex; justify-content: space-between; margin-bottom: ${10 * scaleFactor}px; }
+              .ruang-box { border: ${2 * scaleFactor}px solid black; padding: ${5 * scaleFactor}px ${25 * scaleFactor}px; font-weight: bold; text-align: center; width: max-content; height: max-content; }
               .dh-title-area { text-align: center; flex: 1; }
-              .dh-title { font-weight: bold; font-size: 12pt; text-decoration: underline; }
-              .dh-subtitle { font-weight: bold; font-size: 10pt; margin-top: 4px; }
-              .dh-tahun { font-size: 10pt; margin-top: 2px; }
+              .dh-title { font-weight: bold; font-size: ${12 * scaleFactor}pt; text-decoration: underline; }
+              .dh-subtitle { font-weight: bold; font-size: ${10 * scaleFactor}pt; margin-top: ${4 * scaleFactor}px; }
+              .dh-tahun { font-size: ${10 * scaleFactor}pt; margin-top: ${2 * scaleFactor}px; }
               
-              .meta-table { width: 100%; margin-bottom: 10px; }
-              .meta-table td { padding: 2px; }
+              .meta-table { width: 100%; margin-bottom: ${10 * scaleFactor}px; }
+              .meta-table td { padding: ${2 * scaleFactor}px; }
               
               .data-table { width: 100%; border-collapse: collapse; flex: 1; border: 1px solid black; margin-bottom: auto; }
-              .data-table th, .data-table td { border: 1px solid black; padding: 4px; font-size: 9pt; }
+              .data-table th, .data-table td { border: 1px solid black; padding: ${4 * scaleFactor}px; font-size: ${9 * scaleFactor}pt; }
               .data-table th { font-weight: bold; text-align: center; }
               
-              .signature { margin-top: 20px; float: right; width: 250px; text-align: center; font-size: 10pt; margin-left: auto; }
-              .signature-name { margin-top: 60px; font-weight: bold; }
+              .signature { margin-top: ${20 * scaleFactor}px; float: right; width: 250px; text-align: center; font-size: ${10 * scaleFactor}pt; margin-left: auto; }
+              .signature-name { margin-top: ${60 * scaleFactor}px; font-weight: bold; }
           </style>
       </head>
       <body>
