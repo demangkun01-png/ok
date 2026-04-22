@@ -1516,7 +1516,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       const filteredUsers = users.filter(u => {
           if (u.role !== UserRole.STUDENT) return false;
           if (dhSchoolFilter !== 'ALL' && u.school !== dhSchoolFilter) return false;
-          if (dhRoomFilter !== 'ALL' && u.room !== dhRoomFilter) return false;
+          if (dhRoomFilter !== 'ALL' && u.room !== dhRoomFilter && !u.mappings?.some((m: any) => m.room === dhRoomFilter)) return false;
           return true;
       }).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -2472,13 +2472,13 @@ ANS: B`;
       if (user.role === UserRole.PROKTOR) {
           if (user.school) filtered = filtered.filter(u => u.school === user.school);
           if (user.room) {
-              filtered = filtered.filter(u => u.mappings?.some(m => m.room === user.room));
+              filtered = filtered.filter(u => u.room === user.room || u.mappings?.some((m: any) => m.room === user.room));
           }
       }
 
       if (schoolFilter !== 'ALL') filtered = filtered.filter(u => u.school === schoolFilter);
-      if (roomFilter !== 'ALL') filtered = filtered.filter(u => u.mappings?.some(m => m.room === roomFilter));
-      if (sessionFilter !== 'ALL') filtered = filtered.filter(u => u.mappings?.some(m => m.session === sessionFilter));
+      if (roomFilter !== 'ALL') filtered = filtered.filter(u => u.room === roomFilter || u.mappings?.some((m: any) => m.room === roomFilter));
+      if (sessionFilter !== 'ALL') filtered = filtered.filter(u => u.session === sessionFilter || u.mappings?.some((m: any) => m.session === sessionFilter));
       if (classFilter !== 'ALL') filtered = filtered.filter(u => u.class === classFilter);
       
       if (monitoringSearch) filtered = filtered.filter(u => u.name.toLowerCase().includes(monitoringSearch.toLowerCase()) || u.nomorPeserta?.includes(monitoringSearch));
@@ -2542,8 +2542,8 @@ ANS: B`;
 
   // Derived Values
   const schools = (Array.from(new Set(users.map(u => u.school || 'Unknown'))).filter(Boolean) as string[]).sort();
-  const rooms = (Array.from(new Set(users.flatMap(u => u.mappings?.map(m => m.room) || []))).filter(Boolean) as string[]).sort();
-  const sessions = (Array.from(new Set(users.flatMap(u => u.mappings?.map(m => m.session) || []))).filter(Boolean) as string[]).sort();
+  const rooms = (Array.from(new Set(users.flatMap(u => [u.room, ...(u.mappings?.map(m => m.room) || [])]))).filter(Boolean) as string[]).sort();
+  const sessions = (Array.from(new Set(users.flatMap(u => [u.session, ...(u.mappings?.map(m => m.session) || [])]))).filter(Boolean) as string[]).sort();
   const classes = (Array.from(new Set(users.map(u => u.class))).filter(Boolean) as string[]).sort();
   const resultExams = (Array.from(new Set(results.map(r => r.examTitle))).filter(Boolean) as string[]).sort();
   const totalSchools = schools.length;
@@ -2562,7 +2562,7 @@ ANS: B`;
   
   // Monitoring Filtered Users
   let finalMonitoringUsers = getMonitoringUsers('ALL').filter(u => {
-      const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+      const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
       const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
       const matchesSchool = monitoringSchoolFilter === 'ALL' || u.school === monitoringSchoolFilter;
       const matchesClass = monitoringClassFilter === 'ALL' || u.class === monitoringClassFilter;
@@ -2837,7 +2837,7 @@ ANS: B`;
                                 {users
                                     .filter(u => {
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                         const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                         return matchesSchool && matchesRoom && matchesSession;
                                     })
@@ -2865,7 +2865,7 @@ ANS: B`;
                                     })}
                                 {users.filter(u => {
                                     const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                     const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                     return matchesSchool && matchesRoom && matchesSession;
                                 }).length === 0 && (
@@ -3025,7 +3025,7 @@ ANS: B`;
                                 const filteredFinished = users.filter(u => {
                                     const isFinished = u.status === 'finished';
                                     const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                     const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                     return isFinished && matchesSchool && matchesRoom && matchesSession;
                                 });
@@ -3045,7 +3045,7 @@ ANS: B`;
                                     {users.filter(u => {
                                         const isFinished = u.status === 'finished';
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                         const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                         return isFinished && matchesSchool && matchesRoom && matchesSession;
                                     }).map(u => (
@@ -3058,7 +3058,7 @@ ANS: B`;
                                     {users.filter(u => {
                                         const isFinished = u.status === 'finished';
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                         const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                         return isFinished && matchesSchool && matchesRoom && matchesSession;
                                     }).length === 0 && <tr><td colSpan={3} className="p-4 text-center text-gray-400">Tidak ada data.</td></tr>}
@@ -3073,7 +3073,7 @@ ANS: B`;
                                 const filteredUnfinished = users.filter(u => {
                                     const isUnfinished = u.status !== 'finished';
                                     const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                    const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                     const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                     return isUnfinished && matchesSchool && matchesRoom && matchesSession;
                                 });
@@ -3093,7 +3093,7 @@ ANS: B`;
                                     {users.filter(u => {
                                         const isUnfinished = u.status !== 'finished';
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                         const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                         return isUnfinished && matchesSchool && matchesRoom && matchesSession;
                                     }).map(u => {
@@ -3110,7 +3110,7 @@ ANS: B`;
                                     {users.filter(u => {
                                         const isUnfinished = u.status !== 'finished';
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
-                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.mappings?.some(m => m.room === dashboardRoomFilter);
+                                        const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                         const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
                                         return isUnfinished && matchesSchool && matchesRoom && matchesSession;
                                     }).length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-400">Tidak ada data.</td></tr>}
@@ -3930,7 +3930,7 @@ ANS: B`;
                               <select className="w-full border rounded p-2 text-sm" value={mappingRoomFilter} onChange={e => setMappingRoomFilter(e.target.value)}>
                                   <option value="ALL">Semua Ruang</option>
                                   <option value="NONE">(-) Belum mendapatkan Ruang</option>
-                                  {Array.from(new Set(users.flatMap(u => u.mappings?.map(m => m.room) || []).filter(Boolean))).sort().map(r => <option key={r} value={r}>{r}</option>)}
+                                  {rooms.map(r => <option key={r} value={r}>{r}</option>)}
                               </select>
                           </div>
                           <div>
