@@ -41,12 +41,15 @@ export const db = {
     return undefined;
   },
   getExams: async (level?: 'SD'): Promise<Exam[]> => {
-    // Optimization: Select only required columns instead of *
-    const { data } = await supabase.from('subjects').select('id, name, duration, question_count, token, is_active, education_level, shuffle_questions, shuffle_options, school_access');
+    // Optimization: Select only required columns and sum up real question lengths
+    const { data } = await supabase.from('subjects').select('id, name, duration, question_count, token, is_active, education_level, shuffle_questions, shuffle_options, school_access, questions(id, points)');
     if(!data) return [];
     return data.map(d => ({
-        id: d.id, title: d.name, subject: d.name, durationMinutes: d.duration, questionCount: d.question_count,
-        token: d.token || '', isActive: d.is_active, questions: [], educationLevel: d.education_level || 'SD',
+        id: d.id, title: d.name, subject: d.name, durationMinutes: d.duration, 
+        questionCount: d.questions?.length || 0,
+        token: d.token || '', isActive: d.is_active, 
+        questions: d.questions as unknown as Question[] || [], // Partial array of Questions for points counting
+        educationLevel: d.education_level || 'SD',
         shuffleQuestions: d.shuffle_questions, shuffleOptions: d.shuffle_options, schoolAccess: d.school_access || []
     }));
   },
