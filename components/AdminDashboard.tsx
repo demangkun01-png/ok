@@ -1266,10 +1266,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
           const updatedExams = await db.getExams();
           setExams(updatedExams);
           
-          if (viewingQuestionsExam) {
-              const updatedViewing = updatedExams.find(ex => ex.id === viewingQuestionsExam.id);
-              if (updatedViewing) setViewingQuestionsExam(updatedViewing);
-          }
+          await refreshViewingExam();
 
           setIsAddQuestionModalOpen(false);
           setEditingQuestionId(null);
@@ -1335,8 +1332,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
               await db.deleteQuestion(questionId, viewingQuestionsExam.id);
               const updatedExams = await db.getExams();
               setExams(updatedExams);
-              const updatedViewing = updatedExams.find(ex => ex.id === viewingQuestionsExam.id);
-              if (updatedViewing) setViewingQuestionsExam(updatedViewing);
+              await refreshViewingExam();
               showToast("Soal berhasil dihapus");
           } catch (e) {
               showToast("Gagal menghapus soal", "error");
@@ -1398,9 +1394,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
         await loadData();
         
         // Update viewing exam state
-        const updatedExams = await db.getExams();
-        const updatedViewing = updatedExams.find(ex => ex.id === viewingQuestionsExam.id);
-        if (updatedViewing) setViewingQuestionsExam(updatedViewing);
+        await refreshViewingExam();
 
         setIsAiModalOpen(false);
         setAiTopic('');
@@ -1877,10 +1871,7 @@ ANS: B`;
               db.addQuestions(targetExam.id, newQuestions).then(async () => {
                   const updatedExams = await db.getExams();
                   setExams(updatedExams);
-                  if (viewingQuestionsExam) {
-                      const updatedViewing = updatedExams.find(ex => ex.id === viewingQuestionsExam.id);
-                      if (updatedViewing) setViewingQuestionsExam(updatedViewing);
-                  }
+                  await refreshViewingExam();
                   showToast(`Berhasil import ${newQuestions.length} soal!`);
               }); 
           }
@@ -2452,6 +2443,35 @@ ANS: B`;
     } finally {
       setIsRecalculating(false);
     }
+  };
+
+  const handleViewExamQuestions = async (examInfo: Exam) => {
+      setIsLoadingData(true);
+      try {
+          const fullExam = await db.getExamById(examInfo.id);
+          if (fullExam) {
+              setViewingQuestionsExam(fullExam);
+          } else {
+              showToast("Pelajaran tidak ditemukan.", 'error');
+          }
+      } catch (error) {
+          showToast("Gagal memuat detail Pelajaran.", 'error');
+      } finally {
+          setIsLoadingData(false);
+      }
+  };
+
+  const refreshViewingExam = async () => {
+      if (viewingQuestionsExam) {
+          try {
+              const fullExam = await db.getExamById(viewingQuestionsExam.id);
+              if (fullExam) {
+                  setViewingQuestionsExam(fullExam);
+              }
+          } catch (error) {
+              console.error("Failed to refresh viewing exam", error);
+          }
+      }
   };
 
   const getMonitoringUsers = (schoolFilter: string, roomFilter: string = 'ALL', sessionFilter: string = 'ALL', classFilter: string = 'ALL') => {
@@ -3839,7 +3859,7 @@ ANS: B`;
                                       </h4>
                                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                           {groupExams.map(ex => (
-                                              <div key={ex.id} className="bg-white p-5 rounded-xl border hover:shadow-lg transition cursor-pointer group relative" onClick={() => setViewingQuestionsExam(ex)}>
+                                              <div key={ex.id} className="bg-white p-5 rounded-xl border hover:shadow-lg transition cursor-pointer group relative" onClick={() => handleViewExamQuestions(ex)}>
                                                   <div className="flex justify-between items-start mb-4">
                                                       <div className="bg-blue-50 p-3 rounded-lg group-hover:bg-blue-100 transition"><Database size={24} className="text-blue-600"/></div>
                                                   <div className="flex flex-col items-end gap-1">
