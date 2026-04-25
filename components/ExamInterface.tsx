@@ -5,7 +5,7 @@ import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { Exam, ExamResult, User, Question, AppSettings } from '../types';
 import { playAlertSound } from '../utils/sound';
-import { Timer, ChevronRight, ChevronLeft, Grid3X3, CheckCircle, ShieldAlert, ZoomIn, X, Maximize2, Clock, RefreshCcw } from 'lucide-react';
+import { Timer, ChevronRight, ChevronLeft, Grid3X3, CheckCircle, ShieldAlert, ZoomIn, X, Maximize2, Clock, RefreshCcw, Save } from 'lucide-react';
 import { db } from '../services/database'; // SWITCHED TO REAL DB
 import { Confetti } from './Confetti';
 import { motion, AnimatePresence } from 'motion/react';
@@ -61,6 +61,15 @@ function shuffleArray<T>(array: T[], seedStr?: string): T[] {
 }
 
 // Helper to shuffle options inside a question and update the correctIndex map
+const stripHtml = (html: string) => {
+    try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        return doc.body.textContent || "";
+    } catch {
+        return html.replace(/<[^>]*>?/gm, '');
+    }
+};
+
 const processQuestionsWithShuffledOptions = (questions: Question[], seedBase?: string): Question[] => {
     return questions.map((q, qIndex) => {
         const seed = seedBase ? `${seedBase}_${q.id}_${qIndex}` : undefined;
@@ -234,6 +243,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const [isSessionInitialized, setIsSessionInitialized] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<Date | null>(new Date());
 
   useEffect(() => {
     // Initialize session in database and sync progress
@@ -305,18 +315,21 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
       localStorage.setItem(answersKey, JSON.stringify(answers));
   }, [answers, answersKey]);
 
-  // Periodic Auto-Save every 3 Minutes
+  // Periodic Auto-Save Disabled to save egress. Students must rely on manual sync button.
+  /*
   useEffect(() => {
       if (!isSessionInitialized) return;
       
       const autoSaveInterval = setInterval(() => {
           console.log('Auto-saving progress...');
           db.saveExamProgress(user.id, exam.id, answers, cheatingAttempts, currentQuestionIndex)
+            .then(() => setLastSavedTime(new Date()))
             .catch(err => console.warn("Failed to auto-save progress to DB", err));
-      }, 3 * 60 * 1000); // 3 minutes
+      }, 30 * 1000); // 30 seconds
 
       return () => clearInterval(autoSaveInterval);
   }, [isSessionInitialized, user.id, exam.id, answers, cheatingAttempts, currentQuestionIndex]);
+  */
 
   useEffect(() => {
       localStorage.setItem(doubtsKey, JSON.stringify(markedDoubts));
@@ -897,7 +910,7 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
                           >
                               <option value="">Pilih Jawaban...</option>
                               {rightSides.map((right: string, rIdx: number) => (
-                                  <option key={rIdx} value={right}>{right.replace(/<[^>]*>/g, '')}</option>
+                                  <option key={rIdx} value={right}>{stripHtml(right)}</option>
                               ))}
                           </select>
                       </div>
@@ -1247,6 +1260,29 @@ export const ExamInterface: React.FC<ExamInterfaceProps> = ({ user, exam, onComp
               </div>
           </div>
           <div className="flex items-center space-x-2">
+               {lastSavedTime && (
+                   <span className="text-[10px] md:text-xs text-gray-400 mr-2 pr-2 hidden md:inline">
+                       Tersimpan: {lastSavedTime.toLocaleTimeString('id-ID')}
+                   </span>
+               )}
+               <button 
+                onClick={async () => {
+                    try {
+                        setIsSyncing(true);
+                        await db.saveExamProgress(user.id, exam.id, answers, cheatingAttempts, currentQuestionIndex);
+                        setLastSavedTime(new Date());
+                    } catch (e) {
+                        console.error('Manual save failed', e);
+                    } finally {
+                        setIsSyncing(false);
+                    }
+                }}
+                disabled={isSyncing}
+                title="Simpan Progress Jawaban"
+                className="p-1.5 bg-gray-100 border border-gray-300 rounded text-gray-500 hover:text-green-600 hover:bg-white transition-all shadow-sm active:shadow-inner disabled:opacity-50 mr-2"
+               >
+                   <Save size={16}/>
+               </button>
                <button 
                 onClick={syncQuestionsData}
                 disabled={isSyncing}

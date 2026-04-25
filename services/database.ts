@@ -93,7 +93,7 @@ export const db = {
     }));
   },
   getUsers: async (): Promise<User[]> => {
-    const { data: students } = await supabase.from('students').select('*');
+    const { data: students } = await supabase.from('students').select('*, student_exam_mapping(id, subject_id, exam_date, session, room)');
     const { data: staff } = await supabase.from('staff').select('*');
     
     let allUsers: User[] = [];
@@ -101,7 +101,10 @@ export const db = {
         allUsers = allUsers.concat(students.map(d => ({
             id: d.id, name: d.name, username: d.nomor_peserta, role: UserRole.STUDENT,
             school: d.school, npsn: d.npsn, class: d.class, room: d.room, gender: d.gender, nomorPeserta: d.nomor_peserta,
-            birthDate: d.birth_date, password: d.password, isLogin: d.is_login
+            birthDate: d.birth_date, password: d.password, isLogin: d.is_login,
+            mappings: d.student_exam_mapping?.map((m: any) => ({
+                id: m.id, studentId: d.id, examId: m.subject_id, examDate: m.exam_date, session: m.session, room: m.room
+            })) || []
         })));
     }
     if (staff) {
@@ -200,6 +203,10 @@ export const db = {
       } else {
           await supabase.from('results').update({ status: 'finished' }).eq('status', 'working');
       }
+  },
+  forceFinishStudents: async (studentIds: string[]) => {
+      if (!studentIds || studentIds.length === 0) return;
+      await supabase.from('results').update({ status: 'finished' }).eq('status', 'working').in('student_id', studentIds);
   },
   updateExamMapping: async (...args: any[]) => {
       // Stub

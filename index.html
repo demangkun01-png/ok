@@ -15,6 +15,20 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
 
+    <!-- Fix for "Cannot set property fetch of #<Window> which has only a getter" -->
+    <script>
+      if (typeof window !== 'undefined') {
+        try {
+          const originalFetch = window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() { return originalFetch; },
+            set: function(val) { /* Ignore polyfill overwrites */ },
+            configurable: true
+          });
+        } catch (e) {}
+      }
+    </script>
+
     <title>COMPUTER BASED TEST</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
   </head>

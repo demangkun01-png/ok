@@ -338,6 +338,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   const [resultSubTab, setResultSubTab] = useState<'TABLE' | 'REVIEW'>('TABLE');
   const [reviewExamFilter, setReviewExamFilter] = useState<string>('ALL');
   const [reviewClassFilter, setReviewClassFilter] = useState<string>('ALL');
+  const [reviewSchoolFilter, setReviewSchoolFilter] = useState<string>('ALL');
+  const [reviewRoomFilter, setReviewRoomFilter] = useState<string>('ALL');
+  const [reviewSessionFilter, setReviewSessionFilter] = useState<string>('ALL');
   const [selectedReviewResult, setSelectedReviewResult] = useState<ExamResult | null>(null);
   const [comparisonResult, setComparisonResult] = useState<ExamResult | null>(null);
   
@@ -556,22 +559,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
     checkPing();
     const pingInterval = setInterval(checkPing, 5000);
     
-    // Simulate slight egress fluctuations for Supabase visual representation
-    const egressInterval = setInterval(() => {
-       setEgressData(prev => [
-           { name: 'Digunakan', value: Math.max(0, prev[0].value + ((Math.random() - 0.2) * 0.05)), fill: '#3b82f6' },
-           { name: 'Sisa Kuota', value: Math.max(0, prev[1].value - ((Math.random() - 0.2) * 0.05)), fill: '#e5e7eb' }
-       ]);
-       setDbUsageData(prev => [
-           { name: 'Digunakan', value: Math.max(0, prev[0].value + ((Math.random() - 0.2) * 2)), fill: '#8b5cf6' },
-           { name: 'Sisa Kuota', value: Math.max(0, prev[1].value - ((Math.random() - 0.2) * 2)), fill: '#e5e7eb' }
-       ]);
-    }, 10000);
-    
     return () => {
         if (interval) clearInterval(interval);
         clearInterval(pingInterval);
-        clearInterval(egressInterval);
     };
   }, [activeTab]);
 
@@ -629,8 +619,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
     }
   };
 
-  const loadData = async () => {
-    setIsLoadingData(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoadingData(true);
     try {
       const e = await db.getExams(); 
       const u = await db.getUsers();
@@ -654,7 +644,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
       if (user.role === UserRole.PROKTOR) {
           filteredUsers = u.filter(student => 
               student.school === user.school && 
-              student.mappings?.some(m => m.room === user.room)
+              (student.room === user.room || student.mappings?.some(m => m.room === user.room))
           );
           const studentIds = new Set(filteredUsers.map(student => student.id));
           filteredResults = r.filter(res => studentIds.has(res.studentId));
@@ -666,7 +656,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
     } catch (err) {
       console.error("Error loading data:", err);
     } finally {
-      setIsLoadingData(false);
+      if (!silent) setIsLoadingData(false);
     }
   };
 
@@ -1102,11 +1092,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user, onLogout, 
   };
 
   const handleForceFinishAll = async () => {
-      showConfirm("Anda yakin ingin memaksa semua peserta yang sedang mengerjakan untuk selesai?", async () => {
+      const studentIdsToFinish = finalMonitoringUsers.map(u => u.id);
+      if (studentIdsToFinish.length === 0) {
+          return showToast("Tidak ada peserta pada filter saat ini.", "info");
+      }
+      
+      showConfirm(`Anda yakin ingin memaksa selesai ${studentIdsToFinish.length} peserta yang ada pada filter saat ini?`, async () => {
           setIsLoadingData(true);
           try {
-              await db.forceFinishAllWorking(monitoringExamId || undefined);
-              showToast("Berhasil memaksa selesai semua peserta yang sedang mengerjakan.");
+              await (db as any).forceFinishStudents(studentIdsToFinish);
+              showToast(`Berhasil memaksa selesai peserta dalam filter ini.`);
               await loadData();
           } catch (e: any) {
               showToast(e.message || "Gagal memaksa selesai", 'error');
@@ -2537,19 +2532,16 @@ ANS: B`;
       
       const newToken = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      setIsLoadingData(true);
       try {
           await db.updateExamToken(monitoringExamId, newToken);
-          await loadData(); // Refresh exams to show new token
+          await loadData(true); // Refresh exams to show new token silently
           showToast(`Token berhasil digenerate: ${newToken}`);
       } catch (e: any) {
           showToast(`Gagal generate token: ${e.message}`, 'error');
-      } finally {
-          setIsLoadingData(false);
       }
   };
 
-  // Derived Values
+  // Derived Values (Global Base - Deprecated for Monitoring, keep for others)
   const schools = (Array.from(new Set(users.map(u => u.school || 'Unknown'))).filter(Boolean) as string[]).sort();
   const rooms = (Array.from(new Set(users.flatMap(u => [u.room, ...(u.mappings?.map(m => m.room) || [])]))).filter(Boolean) as string[]).sort();
   const sessions = (Array.from(new Set(users.flatMap(u => [u.session, ...(u.mappings?.map(m => m.session) || [])]))).filter(Boolean) as string[]).sort();
@@ -2557,7 +2549,7 @@ ANS: B`;
   const resultExams = (Array.from(new Set(results.map(r => r.examTitle))).filter(Boolean) as string[]).sort();
   const totalSchools = schools.length;
 
-  // Responsive Nav Item (Icons on Mobile, Full on Desktop)
+  // Responsive Nav Item
   const NavItem = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
       <button 
         onClick={() => { setActiveTab(id); setDashboardView('MAIN'); }} 
@@ -2569,8 +2561,28 @@ ANS: B`;
       </button>
   );
   
+  // Monitoring Base Viewable Users (RBAC aware)
+  const baseMonitoringUsers = getMonitoringUsers('ALL');
+  
+  // Dynamic Option Builders based on DB reality for Monitoring
+  const drvSchools = (Array.from(new Set(baseMonitoringUsers.map(u => u.school))).filter(Boolean) as string[]).sort();
+  
+  const classFilterBase = baseMonitoringUsers.filter(u => monitoringSchoolFilter === 'ALL' || u.school === monitoringSchoolFilter);
+  const drvClasses = (Array.from(new Set(classFilterBase.map(u => u.class))).filter(Boolean) as string[]).sort();
+  
+  const roomFilterBase = classFilterBase.filter(u => monitoringClassFilter === 'ALL' || u.class === monitoringClassFilter);
+  const drvRooms = (Array.from(new Set(roomFilterBase.flatMap(u => [u.room, ...(u.mappings?.map(m => m.room) || [])]))).filter(Boolean) as string[]).sort();
+  
+  const sessionFilterBase = roomFilterBase.filter(u => dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter));
+  const drvSessions = (Array.from(new Set(sessionFilterBase.flatMap(u => [u.session, ...(u.mappings?.map(m => m.session) || [])]))).filter(Boolean) as string[]).sort();
+  
+  const examFilterBase = sessionFilterBase.filter(u => dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter));
+  // Deriving exams based on mappings present in viewable users
+  const drvExamIds = Array.from(new Set(examFilterBase.flatMap(u => u.mappings?.map(m => m.examId) || [])));
+  const drvExams = exams.filter(e => drvExamIds.includes(e.id));
+
   // Monitoring Filtered Users
-  let finalMonitoringUsers = getMonitoringUsers('ALL').filter(u => {
+  let finalMonitoringUsers = baseMonitoringUsers.filter(u => {
       const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
       const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
       const matchesSchool = monitoringSchoolFilter === 'ALL' || u.school === monitoringSchoolFilter;
@@ -2669,7 +2681,6 @@ ANS: B`;
       if (mappingSelectedIds.length === 0) return showToast("Pilih peserta terlebih dahulu!", 'error');
       if (!mappingEditForm.examId) return showToast("Pilih Mata Pelajaran terlebih dahulu!", 'error');
       
-      setIsLoadingData(true);
       try {
           let finalExamDate = mappingEditForm.examDate;
           if (mappingMode === 'TRYOUT') {
@@ -2682,13 +2693,12 @@ ANS: B`;
               room: mappingEditForm.room || undefined,
               session: mappingMode === 'TRYOUT' ? '-' : (mappingEditForm.session || undefined)
           });
-          await loadData();
+          await loadData(true);
           setMappingSelectedIds([]);
           showToast(`Berhasil update mapping untuk ${mappingSelectedIds.length} peserta!`);
       } catch (e: any) {
           showToast(e.message || "Gagal update mapping", 'error');
       }
-      setIsLoadingData(false);
   };
 
   const getMappingUsers = () => {
@@ -2814,17 +2824,17 @@ ANS: B`;
                         <h3 className="font-bold text-lg text-gray-800">Detail Status Peserta (Realtime)</h3>
                     </div>
                     <div className="flex gap-2 flex-wrap">
-                        <select className="border rounded p-2 text-sm min-w-[150px]" value={dashboardSchoolFilter} onChange={e => setDashboardSchoolFilter(e.target.value)}>
+                        <select className="border rounded p-2 text-sm min-w-[150px]" value={dashboardSchoolFilter} onChange={e => {setDashboardSchoolFilter(e.target.value); setDashboardRoomFilter('ALL'); setDashboardSessionFilter('ALL');}}>
                             <option value="ALL">Semua Sekolah</option>
-                            {schools.map(s => <option key={s} value={s}>{s}</option>)}
+                            {drvSchools.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                         <select className="border rounded p-2 text-sm min-w-[120px]" value={dashboardRoomFilter} onChange={e => setDashboardRoomFilter(e.target.value)}>
                             <option value="ALL">Semua Ruang</option>
-                            {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+                            {drvRooms.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                         <select className="border rounded p-2 text-sm min-w-[120px]" value={dashboardSessionFilter} onChange={e => setDashboardSessionFilter(e.target.value)}>
                             <option value="ALL">Semua Sesi</option>
-                            {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+                            {drvSessions.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
                 </div>
@@ -2843,7 +2853,7 @@ ANS: B`;
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {users
+                                {baseMonitoringUsers
                                     .filter(u => {
                                         const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
                                         const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
@@ -2872,7 +2882,7 @@ ANS: B`;
                                             </tr>
                                         )
                                     })}
-                                {users.filter(u => {
+                                {baseMonitoringUsers.filter(u => {
                                     const matchesSchool = dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter;
                                     const matchesRoom = dashboardRoomFilter === 'ALL' || u.room === dashboardRoomFilter || u.mappings?.some(m => m.room === dashboardRoomFilter);
                                     const matchesSession = dashboardSessionFilter === 'ALL' || u.mappings?.some(m => m.session === dashboardSessionFilter);
@@ -2996,7 +3006,7 @@ ANS: B`;
     }
 
     if (dashboardView === 'EXAMS_DETAIL') {
-        const relevantUsers = users.filter(u => {
+        const relevantUsers = baseMonitoringUsers.filter(u => {
              const hasAccess = exams.some(e => e.schoolAccess?.includes(u.school || ''));
              return hasAccess && (dashboardSchoolFilter === 'ALL' || u.school === dashboardSchoolFilter);
         });
@@ -3012,17 +3022,17 @@ ANS: B`;
                          <h3 className="font-bold text-lg text-gray-800">Detail Status Penyelesaian</h3>
                     </div>
                     <div className="flex gap-2 flex-wrap">
-                        <select className="border rounded p-2 text-sm min-w-[200px]" value={dashboardSchoolFilter} onChange={e => setDashboardSchoolFilter(e.target.value)}>
+                        <select className="border rounded p-2 text-sm min-w-[200px]" value={dashboardSchoolFilter} onChange={e => {setDashboardSchoolFilter(e.target.value); setDashboardRoomFilter('ALL'); setDashboardSessionFilter('ALL');}}>
                             <option value="ALL">Semua Sekolah Termapping</option>
-                            {schools.map(s => <option key={s} value={s}>{s}</option>)}
+                            {drvSchools.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                         <select className="border rounded p-2 text-sm min-w-[120px]" value={dashboardRoomFilter} onChange={e => setDashboardRoomFilter(e.target.value)}>
                             <option value="ALL">Semua Ruang</option>
-                            {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+                            {drvRooms.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
                         <select className="border rounded p-2 text-sm min-w-[120px]" value={dashboardSessionFilter} onChange={e => setDashboardSessionFilter(e.target.value)}>
                             <option value="ALL">Semua Sesi</option>
-                            {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+                            {drvSessions.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                     </div>
                 </div>
@@ -3281,7 +3291,7 @@ ANS: B`;
                             <div className="w-full h-24">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <RechartsPieChart>
-                                        <Pie data={egressData} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" stroke="none">
+                                        <Pie data={egressData} isAnimationActive={false} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" stroke="none">
                                             {egressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
                                         </Pie>
                                         <Tooltip formatter={(val: any) => `${val.toFixed(2)} GB`} />
@@ -3295,7 +3305,7 @@ ANS: B`;
                             <div className="w-full h-24">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <RechartsPieChart>
-                                        <Pie data={dbUsageData} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" stroke="none">
+                                        <Pie data={dbUsageData} isAnimationActive={false} innerRadius={20} outerRadius={35} paddingAngle={2} dataKey="value" stroke="none">
                                             {dbUsageData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
                                         </Pie>
                                         <Tooltip formatter={(val: any) => `${val.toFixed(0)} MB`} />
@@ -3425,11 +3435,11 @@ ANS: B`;
                   </>
               )}
               
-              {(user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.PROKTOR) && (
+              {(user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN) && (
                   <NavItem id="CETAK_KARTU" label="Cetak Kartu" icon={Printer} />
               )}
               
-              {(user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.PROKTOR || user.role === UserRole.PENGAWAS) && (
+              {(user.role === UserRole.ADMIN || user.role === UserRole.SUPER_ADMIN || user.role === UserRole.PENGAWAS) && (
                   <NavItem id="DAFTAR_HADIR" label="Cetak Daftar Hadir" icon={FileText} />
               )}
               
@@ -3535,25 +3545,25 @@ ANS: B`;
                        <div className="flex items-center gap-4 flex-wrap">
                            <h3 className="font-bold text-lg flex items-center"><Activity size={20} className="mr-2 text-blue-600"/> Live Status Peserta</h3>
                            <div className="flex gap-2 flex-wrap">
-                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={monitoringSchoolFilter} onChange={e => setMonitoringSchoolFilter(e.target.value)}>
+                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={monitoringSchoolFilter} onChange={e => {setMonitoringSchoolFilter(e.target.value); setMonitoringClassFilter('ALL'); setDashboardRoomFilter('ALL'); setDashboardSessionFilter('ALL'); setMonitoringSubjectFilter('ALL');}}>
                                    <option value="ALL">Semua Sekolah</option>
-                                   {schools.map(s => <option key={s} value={s}>{s}</option>)}
+                                   {drvSchools.map(s => <option key={s} value={s}>{s}</option>)}
                                </select>
-                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={monitoringClassFilter} onChange={e => setMonitoringClassFilter(e.target.value)}>
+                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={monitoringClassFilter} onChange={e => {setMonitoringClassFilter(e.target.value); setDashboardRoomFilter('ALL'); setDashboardSessionFilter('ALL'); setMonitoringSubjectFilter('ALL');}}>
                                    <option value="ALL">Semua Kelas</option>
-                                   {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                                   {drvClasses.map(c => <option key={c} value={c}>{c}</option>)}
+                               </select>
+                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={dashboardRoomFilter} onChange={e => {setDashboardRoomFilter(e.target.value); setDashboardSessionFilter('ALL'); setMonitoringSubjectFilter('ALL');}}>
+                                   <option value="ALL">Semua Ruang</option>
+                                   {drvRooms.map(r => <option key={r} value={r}>{r}</option>)}
+                               </select>
+                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={dashboardSessionFilter} onChange={e => {setDashboardSessionFilter(e.target.value); setMonitoringSubjectFilter('ALL');}}>
+                                   <option value="ALL">Semua Sesi</option>
+                                   {drvSessions.map(s => <option key={s} value={s}>{s}</option>)}
                                </select>
                                <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={monitoringSubjectFilter} onChange={e => setMonitoringSubjectFilter(e.target.value)}>
                                    <option value="ALL">Semua Mapel</option>
-                                   {exams.map(ex => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
-                               </select>
-                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={dashboardRoomFilter} onChange={e => setDashboardRoomFilter(e.target.value)}>
-                                   <option value="ALL">Semua Ruang</option>
-                                   {rooms.map(r => <option key={r} value={r}>{r}</option>)}
-                               </select>
-                               <select className="border rounded p-1.5 text-xs font-bold bg-gray-50" value={dashboardSessionFilter} onChange={e => setDashboardSessionFilter(e.target.value)}>
-                                   <option value="ALL">Semua Sesi</option>
-                                   {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+                                   {drvExams.map(ex => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
                                </select>
                                <button 
                                    onClick={handleForceFinishAll}
@@ -3986,27 +3996,44 @@ ANS: B`;
                               ) : (
                                   <div>
                                       <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Sesi</label>
-                                      <select className="w-full border rounded p-2 text-sm bg-white" value={mappingEditForm.session} onChange={e => setMappingEditForm({...mappingEditForm, session: e.target.value})}>
-                                          <option value="">Pilih Sesi...</option>
-                                          <option value="Sesi 1">Sesi 1</option>
-                                          <option value="Sesi 2">Sesi 2</option>
-                                          <option value="Sesi 3">Sesi 3</option>
-                                          <option value="Sesi 4">Sesi 4</option>
-                                      </select>
+                                      <input 
+                                          type="text"
+                                          list="session-options"
+                                          placeholder="Ketik atau Pilih Sesi..."
+                                          className="w-full border rounded p-2 text-sm bg-white" 
+                                          value={mappingEditForm.session} 
+                                          onChange={e => setMappingEditForm({...mappingEditForm, session: e.target.value})}
+                                      />
+                                      <datalist id="session-options">
+                                          {Array.from(new Set(users.filter(u => u.role === UserRole.STUDENT && u.session).map(u => u.session))).filter(Boolean).sort().map((s: any) => (
+                                              <option key={s} value={s}>{s}</option>
+                                          ))}
+                                          <option value="Sesi 1" />
+                                          <option value="Sesi 2" />
+                                          <option value="Sesi 3" />
+                                          <option value="Sesi 4" />
+                                      </datalist>
                                   </div>
                               )}
                               <div>
                                   <label className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Ruang</label>
-                                  <select 
+                                  <input 
+                                      type="text"
+                                      list="room-options"
+                                      placeholder="Ketik atau Pilih Ruang..."
                                       className="w-full border rounded p-2 text-sm bg-white" 
                                       value={mappingEditForm.room} 
                                       onChange={e => setMappingEditForm({...mappingEditForm, room: e.target.value})}
-                                  >
-                                      <option value="">Pilih Ruang...</option>
-                                      {Array.from(new Set(staffList.filter(s => s.role === UserRole.PROKTOR).map(s => s.room))).filter(Boolean).sort().map(r => (
+                                  />
+                                  <datalist id="room-options">
+                                      <option value="Semua Ruang">Semua Ruang</option>
+                                      {Array.from(new Set([
+                                          ...users.filter(u => u.role === UserRole.STUDENT && u.room).map(u => u.room),
+                                          ...staffList.filter(s => s.role === UserRole.PROKTOR && s.room).map(s => s.room)
+                                      ])).filter(Boolean).sort().map((r: any) => (
                                           <option key={r} value={r}>{r}</option>
                                       ))}
-                                  </select>
+                                  </datalist>
                               </div>
                               <button onClick={handleSaveStudentMapping} disabled={isLoadingData || mappingSelectedIds.length === 0} className="bg-blue-600 text-white py-2 rounded font-bold text-sm hover:bg-blue-700 disabled:opacity-50 shadow-md">
                                   Simpan Mapping
@@ -4731,6 +4758,18 @@ ANS: B`;
                                            <span className="font-black text-gray-800 uppercase tracking-tight">Filter Review</span>
                                        </div>
                                        
+                                       <div className="flex-1 min-w-[150px]">
+                                           <label className="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Sekolah</label>
+                                           <select 
+                                               className="w-full border-2 border-gray-200 rounded-xl p-2.5 text-sm font-bold bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
+                                               value={reviewSchoolFilter} 
+                                               onChange={e => setReviewSchoolFilter(e.target.value)}
+                                           >
+                                               <option value="ALL">Semua Sekolah</option>
+                                               {schools.map(s => <option key={s} value={s}>{s}</option>)}
+                                           </select>
+                                       </div>
+
                                        <div className="flex-1 min-w-[200px]">
                                            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Mata Pelajaran</label>
                                            <select 
@@ -4754,12 +4793,41 @@ ANS: B`;
                                                {classes.map(c => <option key={c} value={c}>{c}</option>)}
                                            </select>
                                        </div>
+                                       
+                                       <div className="flex-1 min-w-[150px]">
+                                           <label className="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Ruang</label>
+                                           <select 
+                                               className="w-full border-2 border-gray-200 rounded-xl p-2.5 text-sm font-bold bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
+                                               value={reviewRoomFilter} 
+                                               onChange={e => setReviewRoomFilter(e.target.value)}
+                                           >
+                                               <option value="ALL">Semua Ruang</option>
+                                               {rooms.map(r => <option key={r} value={r}>{r}</option>)}
+                                           </select>
+                                       </div>
+
+                                       <div className="flex-1 min-w-[150px]">
+                                           <label className="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">Sesi</label>
+                                           <select 
+                                               className="w-full border-2 border-gray-200 rounded-xl p-2.5 text-sm font-bold bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all" 
+                                               value={reviewSessionFilter} 
+                                               onChange={e => setReviewSessionFilter(e.target.value)}
+                                           >
+                                               <option value="ALL">Semua Sesi</option>
+                                               {sessions.map(s => <option key={s} value={s}>{s}</option>)}
+                                           </select>
+                                       </div>
                                    </div>
 
                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                        {results
                                            .filter(r => {
                                                const student = users.find(u => u.id === r.studentId);
+                                               const mapping = student?.mappings?.[0];
+                                               
+                                               if (reviewSchoolFilter !== 'ALL' && student?.school !== reviewSchoolFilter) return false;
+                                               if (reviewRoomFilter !== 'ALL' && mapping?.room !== reviewRoomFilter) return false;
+                                               if (reviewSessionFilter !== 'ALL' && mapping?.session !== reviewSessionFilter) return false;
                                                if (reviewExamFilter !== 'ALL' && r.examTitle !== reviewExamFilter) return false;
                                                if (reviewClassFilter !== 'ALL' && student?.class !== reviewClassFilter) return false;
                                                return true;
@@ -6166,13 +6234,37 @@ ANS: B`;
                                   {nqOptions.map((opt, i) => (
                                       <div key={i} className="flex items-start gap-2">
                                           <span className="font-bold w-6 text-sm py-3">{String.fromCharCode(65+i)}.</span>
-                                          <ResizableQuill 
-                                              value={opt} 
-                                              onChange={val => {const n = [...nqOptions]; n[i] = val; setNqOptions(n);}} 
-                                              placeholder={`Opsi ${String.fromCharCode(65+i)}`}
-                                          />
+                                          <div className="flex flex-col flex-1 gap-2 border rounded-lg bg-gray-50 p-2">
+                                              <ResizableQuill 
+                                                  value={opt} 
+                                                  onChange={val => {const n = [...nqOptions]; n[i] = val; setNqOptions(n);}} 
+                                                  placeholder={`Opsi ${String.fromCharCode(65+i)}`}
+                                              />
+                                              <div className="flex gap-2">
+                                                  <input 
+                                                      type="text" 
+                                                      placeholder="Atau Paste URL Gambar untuk opsi ini..." 
+                                                      className="flex-1 text-xs p-1.5 border rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                  />
+                                                  <button 
+                                                      type="button" 
+                                                      onClick={e => {
+                                                          const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                          if(input.value) {
+                                                              const n = [...nqOptions];
+                                                              n[i] = n[i] + `<br><img src="${input.value}" class="max-h-32 rounded mt-2 max-w-full" />`;
+                                                              setNqOptions(n);
+                                                              input.value = '';
+                                                          }
+                                                      }}
+                                                      className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 text-[11px] font-bold rounded"
+                                                  >
+                                                      Sisipkan Gambar
+                                                  </button>
+                                              </div>
+                                          </div>
                                           <div className="py-3">
-                                              <input type="radio" name="correct" checked={nqCorrectIndex === i} onChange={() => setNqCorrectIndex(i)} className="w-4 h-4 text-blue-600 cursor-pointer"/>
+                                              <input type="radio" name="correct" checked={nqCorrectIndex === i} onChange={() => setNqCorrectIndex(i)} className="w-5 h-5 text-blue-600 cursor-pointer"/>
                                           </div>
                                       </div>
                                   ))}
@@ -6185,11 +6277,35 @@ ANS: B`;
                                   {nqOptions.map((opt, i) => (
                                       <div key={i} className="flex items-start gap-2">
                                           <span className="font-bold w-6 text-sm py-3">{String.fromCharCode(65+i)}.</span>
-                                          <ResizableQuill 
-                                              value={opt} 
-                                              onChange={val => {const n = [...nqOptions]; n[i] = val; setNqOptions(n);}} 
-                                              placeholder={`Opsi ${String.fromCharCode(65+i)}`}
-                                          />
+                                          <div className="flex flex-col flex-1 gap-2 border rounded-lg bg-gray-50 p-2">
+                                              <ResizableQuill 
+                                                  value={opt} 
+                                                  onChange={val => {const n = [...nqOptions]; n[i] = val; setNqOptions(n);}} 
+                                                  placeholder={`Opsi ${String.fromCharCode(65+i)}`}
+                                              />
+                                              <div className="flex gap-2">
+                                                  <input 
+                                                      type="text" 
+                                                      placeholder="Atau Paste URL Gambar untuk opsi ini..." 
+                                                      className="flex-1 text-xs p-1.5 border rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                  />
+                                                  <button 
+                                                      type="button" 
+                                                      onClick={e => {
+                                                          const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                          if(input.value) {
+                                                              const n = [...nqOptions];
+                                                              n[i] = n[i] + `<br><img src="${input.value}" class="max-h-32 rounded mt-2 max-w-full" />`;
+                                                              setNqOptions(n);
+                                                              input.value = '';
+                                                          }
+                                                      }}
+                                                      className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 text-[11px] font-bold rounded"
+                                                  >
+                                                      Sisipkan Gambar
+                                                  </button>
+                                              </div>
+                                          </div>
                                           <div className="py-3">
                                               <input 
                                                   type="checkbox" 
@@ -6198,7 +6314,7 @@ ANS: B`;
                                                       if (e.target.checked) setNqCorrectIndices([...nqCorrectIndices, i]);
                                                       else setNqCorrectIndices(nqCorrectIndices.filter(idx => idx !== i));
                                                   }} 
-                                                  className="w-4 h-4 text-blue-600 cursor-pointer"
+                                                  className="w-5 h-5 text-blue-600 cursor-pointer rounded"
                                               />
                                           </div>
                                       </div>
@@ -6229,25 +6345,73 @@ ANS: B`;
                                       <button onClick={() => setNqMatchingPairs([...nqMatchingPairs, {left: '', right: ''}])} className="text-blue-600 text-xs font-bold flex items-center hover:underline"><Plus size={12} className="mr-1"/> Tambah Baris</button>
                                   </div>
                                   {nqMatchingPairs.map((pair, i) => (
-                                      <div key={i} className="flex items-start gap-2 bg-gray-50/50 p-2 rounded-xl border border-dashed border-gray-200">
-                                          <div className="flex-1 space-y-1">
+                                      <div key={i} className="flex items-start gap-4 bg-gray-50/50 p-3 rounded-xl border border-dashed border-gray-200">
+                                          <div className="flex-1 space-y-2">
                                               <span className="text-[10px] font-bold text-gray-400 uppercase">Kiri (Soal)</span>
-                                              <ResizableQuill 
-                                                  value={pair.left} 
-                                                  onChange={val => {const n = [...nqMatchingPairs]; n[i].left = val; setNqMatchingPairs(n);}} 
-                                                  placeholder="Teks Kiri..."
-                                              />
+                                              <div className="flex flex-col gap-2">
+                                                  <ResizableQuill 
+                                                      value={pair.left} 
+                                                      onChange={val => {const n = [...nqMatchingPairs]; n[i].left = val; setNqMatchingPairs(n);}} 
+                                                      placeholder="Teks Kiri..."
+                                                  />
+                                                  <div className="flex gap-2">
+                                                      <input 
+                                                          type="text" 
+                                                          placeholder="URL Gambar..." 
+                                                          className="flex-1 text-[10px] p-1 border rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                      />
+                                                      <button 
+                                                          type="button" 
+                                                          onClick={e => {
+                                                              const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                              if(input.value) {
+                                                                  const n = [...nqMatchingPairs];
+                                                                  n[i].left = n[i].left + `<br><img src="${input.value}" class="max-h-24 rounded mt-2 max-w-full" />`;
+                                                                  setNqMatchingPairs(n);
+                                                                  input.value = '';
+                                                              }
+                                                          }}
+                                                          className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 text-[10px] font-bold rounded"
+                                                      >
+                                                          Sisipkan
+                                                      </button>
+                                                  </div>
+                                              </div>
                                           </div>
-                                          <div className="flex flex-col items-center justify-center pt-6 text-gray-300">
+                                          <div className="flex flex-col items-center justify-center pt-8 text-gray-300">
                                               <ArrowRightLeft size={16}/>
                                           </div>
-                                          <div className="flex-1 space-y-1">
+                                          <div className="flex-1 space-y-2">
                                               <span className="text-[10px] font-bold text-gray-400 uppercase">Kanan (Jawaban)</span>
-                                              <ResizableQuill 
-                                                  value={pair.right} 
-                                                  onChange={val => {const n = [...nqMatchingPairs]; n[i].right = val; setNqMatchingPairs(n);}} 
-                                                  placeholder="Teks Kanan..."
-                                              />
+                                              <div className="flex flex-col gap-2">
+                                                  <ResizableQuill 
+                                                      value={pair.right} 
+                                                      onChange={val => {const n = [...nqMatchingPairs]; n[i].right = val; setNqMatchingPairs(n);}} 
+                                                      placeholder="Teks Kanan..."
+                                                  />
+                                                  <div className="flex gap-2">
+                                                      <input 
+                                                          type="text" 
+                                                          placeholder="URL Gambar..." 
+                                                          className="flex-1 text-[10px] p-1 border rounded outline-none focus:ring-1 focus:ring-blue-500"
+                                                      />
+                                                      <button 
+                                                          type="button" 
+                                                          onClick={e => {
+                                                              const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                              if(input.value) {
+                                                                  const n = [...nqMatchingPairs];
+                                                                  n[i].right = n[i].right + `<br><img src="${input.value}" class="max-h-24 rounded mt-2 max-w-full" />`;
+                                                                  setNqMatchingPairs(n);
+                                                                  input.value = '';
+                                                              }
+                                                          }}
+                                                          className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 text-[10px] font-bold rounded"
+                                                      >
+                                                          Sisipkan
+                                                      </button>
+                                                  </div>
+                                              </div>
                                           </div>
                                           <button onClick={() => setNqMatchingPairs(nqMatchingPairs.filter((_, idx) => idx !== i))} className="text-red-500 p-1 hover:bg-red-100 rounded self-center mt-6 transition">
                                               <Trash size={16}/>
